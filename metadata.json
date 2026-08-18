@@ -1,0 +1,6 @@
+{
+  "name": "LLM Cluster Trainer V3",
+  "description": "Painel de controle unificado para treinamento distribuído e inferência de LLMs em múltiplos dispositivos (Android, Windows, Linux) no formato Motor Único.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

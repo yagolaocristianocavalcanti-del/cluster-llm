@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Modo de Economia de Energia: Reduz animações contínuas e custos de renderização */
+html[data-power-save="true"] *,
+html[data-power-save="true"] *::before,
+html[data-power-save="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 100ms !important;
+}
+
+html[data-power-save="true"] .animate-pulse,
+html[data-power-save="true"] .animate-ping,
+html[data-power-save="true"] .animate-spin {
+  animation: none !important;
+}
