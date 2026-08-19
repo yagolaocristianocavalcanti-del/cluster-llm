@@ -41,7 +41,7 @@ export interface ClusterMetricsSummary {
   cluster_health_pct: number;
 }
 
-export type ModelType = 'inference' | 'code' | 'multimodal' | 'lightweight' | 'embedding';
+export type ModelType = 'inference' | 'code' | 'multimodal' | 'lightweight' | 'embedding' | 'reasoning';
 
 export interface ModelItem {
   id: string;
@@ -57,6 +57,23 @@ export interface ModelItem {
   is_downloading?: boolean;
   description: string;
   recommended_ram_gb: number;
+  source?: 'ollama' | 'gguf' | 'huggingface' | 'local';
+  installed_nodes?: string[]; // IDs dos nós que possuem o modelo pronto
+  modified_at?: string;
+  digest?: string;
+  family?: string;
+  format?: string;
+  is_active?: boolean;
+}
+
+export interface OllamaHostInfo {
+  host: string;
+  status: 'connected' | 'offline' | 'checking';
+  version?: string;
+  models_count?: number;
+  latency_ms?: number;
+  last_checked?: string;
+  error?: string;
 }
 
 export type TaskType = 'inference' | 'fine_tune' | 'benchmark' | 'download_model' | 'push_deps';
@@ -245,6 +262,51 @@ export interface FinetuneCheckpoint {
   active_nodes_count: number;
   config_snapshot: FinetunePreset['config'];
   loss_history_snapshot: number[];
+}
+
+// 5. Auto-Scaling Inteligente, Wake-on-LAN & Cloud Bursting
+export interface DormantNodeWOL {
+  id: string;
+  name: string;
+  mac_address: string;
+  ip_address: string;
+  platform: PlatformType;
+  specs_summary: string;
+  wake_port?: number;
+  status: 'sleeping' | 'waking' | 'online';
+  last_woken?: string;
+}
+
+export interface CloudBurstInstanceConfig {
+  provider: 'gcp_cloud_run' | 'runpod_spot' | 'lambda_labs' | 'aws_ec2_g5';
+  name: string;
+  gpu_type: 'NVIDIA T4 (16GB)' | 'NVIDIA A10G (24GB)' | 'NVIDIA L4 (24GB)' | 'NVIDIA A100 (80GB)';
+  cost_per_hour_usd: number;
+  location: string;
+  auto_terminate_idle_min: number;
+}
+
+export interface AutoScalingStatus {
+  enabled: boolean;
+  demand_score_pct: number; // 0 - 100%
+  stress_level: 'low' | 'optimal' | 'elevated' | 'critical';
+  cpu_threshold_pct: number;
+  ram_threshold_pct: number;
+  queue_threshold_tasks: number;
+  recommendation: 'stable' | 'wake_wol' | 'spawn_cloud' | 'scale_down';
+  reason: string;
+  active_cloud_nodes_count: number;
+  dormant_nodes_available: number;
+  last_evaluated: string;
+}
+
+export interface AutoScalingEvent {
+  id: string;
+  timestamp: string;
+  event_type: 'wol_wake' | 'cloud_burst_spawn' | 'cloud_burst_terminate' | 'scale_down';
+  target_name: string;
+  reason: string;
+  status: 'triggered' | 'completed' | 'failed';
 }
 
 export type AppView = 'dashboard' | 'cluster' | 'inference' | 'finetune' | 'models' | 'tasks' | 'servodash' | 'scripts' | 'settings';

@@ -21,6 +21,8 @@ interface SettingsViewProps {
   onThemeChange: (theme: AppTheme) => void;
   powerSaveMode: boolean;
   onTogglePowerSave: () => void;
+  mdnsOllamaDiscovery?: boolean;
+  onToggleMdnsDiscovery?: () => void;
   onResetCluster: () => void;
 }
 
@@ -29,6 +31,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onThemeChange,
   powerSaveMode,
   onTogglePowerSave,
+  mdnsOllamaDiscovery = true,
+  onToggleMdnsDiscovery,
   onResetCluster,
 }) => {
   const [masterPort, setMasterPort] = useState('5000');
@@ -184,6 +188,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {t.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Descoberta mDNS Automática de Ollama */}
+          <div className="p-6 rounded-3xl bg-white/[0.05] backdrop-blur-xl border border-indigo-500/30 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
+                <h3 className="font-bold text-sm text-white">Enable mDNS Ollama Discovery</h3>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                mdnsOllamaDiscovery ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' : 'bg-white/10 text-white/60'
+              }`}>
+                {mdnsOllamaDiscovery ? 'Polling 15s (Ativo)' : 'Desativado'}
+              </span>
+            </div>
+
+            <p className="text-xs text-white/60 leading-relaxed">
+              Executa polling em segundo plano com varredura multicast mDNS e detecção de instâncias do Ollama na sub-rede local (portas 11434 / LAN). Adiciona automaticamente novos nós e sincroniza os modelos disponíveis.
+            </p>
+
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={onToggleMdnsDiscovery}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs transition-all border ${
+                  mdnsOllamaDiscovery
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 shadow-lg shadow-indigo-600/30'
+                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                {mdnsOllamaDiscovery ? 'mDNS Discovery: LIGADO' : 'mDNS Discovery: DESLIGADO'}
+              </button>
             </div>
           </div>
 

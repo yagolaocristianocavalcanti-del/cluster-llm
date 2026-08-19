@@ -1,4 +1,4 @@
-import { ClusterNode, ModelItem, TaskItem } from '../types';
+import { ClusterNode, ModelItem, TaskItem, DormantNodeWOL, CloudBurstInstanceConfig } from '../types';
 
 export const INITIAL_NODES: ClusterNode[] = [
   {
@@ -302,6 +302,68 @@ export const SAMPLE_DATASETS = [
     description: 'Tom sarcástico, técnico e futurista para assistentes de linha de comando.',
     content: `{"instruction": "Quem é você?", "response": "[NEURAL_LINK]: Sou a matriz distribuída do LLM Cluster Trainer V3. Meus núcleos residem nos seus terminais."}
 {"instruction": "Qual o status do nó 4?", "response": "[TELEMETRY_SCAN]: Nó 4 operando a 39°C, 88% de bateria, 0 gargalos no barramento DMA."}`,
+  },
+];
+
+// Nós Dormindo Registrados com Suporte a Wake-on-LAN (WOL)
+export const INITIAL_DORMANT_WOL_NODES: DormantNodeWOL[] = [
+  {
+    id: 'wol_desktop_4090',
+    name: 'Workstation RTX 4090 (Laboratório)',
+    mac_address: '00:1B:44:11:3A:B7',
+    ip_address: '192.168.1.180',
+    platform: 'Windows',
+    specs_summary: 'Ryzen 9 7950X, 64GB DDR5, RTX 4090 24GB (CUDA 12.4)',
+    wake_port: 9,
+    status: 'sleeping',
+  },
+  {
+    id: 'wol_server_dell',
+    name: 'Dell PowerEdge R740 (Rack Local)',
+    mac_address: 'D8:9D:67:23:44:8C',
+    ip_address: '192.168.1.200',
+    platform: 'Linux',
+    specs_summary: '2x Xeon Gold 6248, 128GB ECC RAM, 2x Tesla T4 16GB',
+    wake_port: 9,
+    status: 'sleeping',
+  },
+  {
+    id: 'wol_mac_studio',
+    name: 'Mac Studio M2 Ultra (Sala de Criação)',
+    mac_address: 'A4:83:E7:99:1C:2F',
+    ip_address: '192.168.1.155',
+    platform: 'macOS',
+    specs_summary: 'Apple M2 Ultra 24-core, 64GB Memória Unificada (Metal GPU)',
+    wake_port: 9,
+    status: 'sleeping',
+  },
+];
+
+// Presets de Instâncias Cloud Spot para Bursting Sob Demanda
+export const CLOUD_BURST_PRESETS: CloudBurstInstanceConfig[] = [
+  {
+    provider: 'gcp_cloud_run',
+    name: 'GCP Cloud Run GPU (NVIDIA L4 24GB)',
+    gpu_type: 'NVIDIA L4 (24GB)',
+    cost_per_hour_usd: 0.65,
+    location: 'us-central1 (Iowa)',
+    auto_terminate_idle_min: 15,
+  },
+  {
+    provider: 'runpod_spot',
+    name: 'RunPod Spot Instance (NVIDIA A10G 24GB)',
+    gpu_type: 'NVIDIA A10G (24GB)',
+    cost_per_hour_usd: 0.39,
+    location: 'US-East (Virginia)',
+    auto_terminate_idle_min: 10,
+  },
+  {
+    provider: 'lambda_labs',
+    name: 'Lambda Labs On-Demand (NVIDIA A100 80GB SXM4)',
+    gpu_type: 'NVIDIA A100 (80GB)',
+    cost_per_hour_usd: 1.49,
+    location: 'us-west-1 (Texas)',
+    auto_terminate_idle_min: 20,
   },
 ];
 

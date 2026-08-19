@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   KeyRound, 
   RotateCw, 
@@ -9,15 +9,22 @@ import {
   Wifi,
   Layers,
   Leaf,
-  Zap
+  Zap,
+  Box,
+  ChevronDown,
+  Check
 } from 'lucide-react';
-import { AppTheme, AppView } from '../types';
+import { AppTheme, AppView, ModelItem } from '../types';
 
 interface TopbarProps {
   currentView: AppView;
   onlineCount: number;
   totalCount: number;
   criticalCount?: number;
+  models?: ModelItem[];
+  selectedModelName?: string;
+  onSelectModel?: (name: string) => void;
+  onNavigateToModels?: () => void;
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
   powerSaveMode: boolean;
@@ -72,6 +79,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   onlineCount,
   totalCount,
   criticalCount = 0,
+  models = [],
+  selectedModelName,
+  onSelectModel,
+  onNavigateToModels,
   theme,
   onThemeChange,
   powerSaveMode,
@@ -81,6 +92,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   onNavigateToCluster,
   isRefreshing,
 }) => {
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const installedModels = models.filter((m) => m.installed);
+  const currentModel = models.find((m) => m.name === selectedModelName) || models[0];
+
   const currentInfo = VIEW_TITLES[currentView] || {
     title: 'Painel de Controle',
     subtitle: 'LLM Cluster Trainer V3',
@@ -103,6 +118,59 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Actions & Status */}
       <div className="flex items-center gap-3">
+        {/* Seletor Rápido de Modelo Ativo */}
+        {selectedModelName && onSelectModel && (
+          <div className="relative hidden md:block">
+            <button
+              onClick={() => setShowModelMenu(!showModelMenu)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 text-xs font-mono transition-all"
+              title="Modelo ativo no cluster. Clique para alternar."
+            >
+              <Box className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-white font-semibold max-w-[140px] truncate">
+                {currentModel?.display || selectedModelName}
+              </span>
+              <ChevronDown className="w-3 h-3 text-white/50" />
+            </button>
+
+            {showModelMenu && (
+              <div className="absolute right-0 top-full mt-2 w-64 p-2 rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-white/20 shadow-2xl z-50 space-y-1 animate-fadeIn">
+                <div className="px-2 py-1 text-[10px] font-bold text-white/40 uppercase font-mono border-b border-white/10 mb-1 flex justify-between items-center">
+                  <span>Modelo Ativo</span>
+                  {onNavigateToModels && (
+                    <button
+                      onClick={() => { setShowModelMenu(false); onNavigateToModels(); }}
+                      className="text-indigo-300 hover:underline"
+                    >
+                      + Catálogo
+                    </button>
+                  )}
+                </div>
+                {installedModels.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      onSelectModel(m.name);
+                      setShowModelMenu(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl text-left text-xs font-mono transition-all ${
+                      m.name === selectedModelName
+                        ? 'bg-indigo-600/40 text-white font-bold'
+                        : 'hover:bg-white/5 text-white/70 hover:text-white'
+                    }`}
+                  >
+                    <div className="truncate">
+                      <div>{m.display}</div>
+                      <div className="text-[10px] text-white/40">{m.quantization} • {m.size}</div>
+                    </div>
+                    {m.name === selectedModelName && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Alerta de Nós Críticos */}
         {criticalCount > 0 && (
           <button

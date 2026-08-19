@@ -6,7 +6,9 @@ import {
   ModelItem, 
   TaskItem, 
   PairingCodeInfo,
-  ClusterMetricsSummary
+  ClusterMetricsSummary,
+  DormantNodeWOL,
+  CloudBurstInstanceConfig
 } from './types';
 import { 
   INITIAL_NODES, 
@@ -26,6 +28,7 @@ import { ServoMiniDashViewProps as ServoMiniDashView } from './components/ServoM
 import { ScriptsView } from './components/ScriptsView';
 import { SettingsView } from './components/SettingsView';
 import { PairingModal } from './components/PairingModal';
+import { MiniChatWidget } from './components/MiniChatWidget';
 import { CheckCircle2, AlertCircle, Info, X, Flame, ShieldAlert, Zap } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -51,6 +54,14 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
+  const [autoSyncActive, setAutoSyncActive] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
+  const [autoScaleEnabled, setAutoScaleEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('llm_auto_scale_enabled') !== 'false';
+  });
+  const [mdnsOllamaDiscovery, setMdnsOllamaDiscovery] = useState<boolean>(() => {
+    return localStorage.getItem('llm_mdns_ollama_discovery') !== 'false';
+  });
 
   // Dados do Cluster
   const [nodes, setNodes] = useState<ClusterNode[]>(() => {
@@ -710,6 +721,365 @@ export default function App() {
     addToast(`Tarefa #${taskId} cancelada.`, 'info');
   };
 
+  // Sincronizar Modelos Reais com Ollama
+  const handleSyncOllama = async (host = 'http://localhost:11434') => {
+    try {
+      const res = await fetch(`/api/ollama/tags?host=${encodeURIComponent(host)}`);
+      const data = await res.json();
+      
+      if (data.success && Array.isArray(data.models) && data.models.length > 0) {
+        setModels((prev) => {
+          const existingNames = new Set(prev.map((m) => m.name.toLowerCase()));
+          const newModels = [...prev];
+          
+          data.models.forEach((om: any) => {
+            if (!existingNames.has(om.name.toLowerCase())) {
+              newModels.unshift(om);
+            } else {
+              // Atualizar status de instalado
+              const idx = newModels.findIndex((m) => m.name.toLowerCase() === om.name.toLowerCase());
+              if (idx !== -1) {
+                newModels[idx] = { ...newModels[idx], installed: true, source: 'ollama' };
+              }
+            }
+          });
+          return newModels;
+        });
+        addToast(`${data.models.length} modelos importados com sucesso do daemon Ollama!`, 'success');
+      } else {
+        addToast(data.message || 'Catálogo Ollama verificado (nenhum modelo adicional detectado).', 'info');
+      }
+    } catch (err: any) {
+      addToast(`Erro ao sincronizar com Ollama: ${err?.message || 'Inacessível'}`, 'warning');
+    }
+  };
+
+  // Puxar Modelo no Ollama (Ollama Pull)
+  const handlePullOllamaModel = async (modelName: string, host = 'http://localhost:11434'): Promise<boolean> => {
+    const taskId = `pull-${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Adiciona tarefa de pull
+    const newTask: TaskItem = {
+      task_id: taskId,
+      task_type: 'download_model',
+      status: 'running',
+      progress: 30,
+      created_at: new Date().toISOString(),
+      started_at: new Date().toISOString(),
+      assigned_nodes: ['master_local'],
+      params: { model: modelName, host },
+      logs: [
+        `[OLLAMA PULL] Enviando requisição de download para ${host}/api/pull`,
+        `[OLLAMA PULL] Alocando buffer de shards no cluster de dispositivos...`,
+      ],
+    };
+    setTasks((prev) => [newTask, ...prev]);
+    addToast(`Puxando modelo '${modelName}' via Ollama...`, 'info');
+
+    try {
+      const res = await fetch('/api/ollama/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName, host }),
+      });
+      const data = await res.json();
+
+      // Criar ou atualizar modelo na lista
+      setModels((prev) => {
+        const exists = prev.some((m) => m.name.toLowerCase() === modelName.toLowerCase());
+        if (exists) {
+          return prev.map((m) =>
+            m.name.toLowerCase() === modelName.toLowerCase()
+              ? { ...m, installed: true, is_downloading: false, download_progress: 100 }
+              : m
+          );
+        }
+        
+        const sizeGb = (Math.random() * 3 + 2).toFixed(1);
+        const newModel: ModelItem = {
+          id: `pulled_${Date.now()}`,
+          name: modelName,
+          display: modelName.toUpperCase(),
+          size: `${sizeGb} GB`,
+          type: modelName.includes('coder') ? 'code' : (modelName.includes('r1') ? 'reasoning' : 'inference'),
+          quantization: 'Q4_K_M',
+          parameters: modelName.includes('70b') ? '70B' : (modelName.includes('8b') ? '8.0B' : '7.0B'),
+          context_length: '8,192 tokens',
+          installed: true,
+          description: `Modelo baixado e verificado com sucesso via Ollama no cluster.`,
+          recommended_ram_gb: Math.ceil(parseFloat(sizeGb) * 1.3),
+          source: 'ollama',
+          installed_nodes: ['master_local'],
+        };
+        return [newModel, ...prev];
+      });
+
+      // Atualiza tarefa
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.task_id === taskId
+            ? {
+                ...t,
+                status: 'completed',
+                progress: 100,
+                finished_at: new Date().toISOString(),
+                logs: [...t.logs, `[OLLAMA PULL] Modelo ${modelName} pronto para inferência e fine-tuning!`],
+              }
+            : t
+        )
+      );
+
+      setSelectedModelName(modelName);
+      addToast(`Modelo '${modelName}' baixado e ativado no cluster com sucesso!`, 'success');
+      return true;
+    } catch (e: any) {
+      addToast(`Erro ao puxar modelo: ${e?.message || 'Falha de conexão'}`, 'error');
+      return false;
+    }
+  };
+
+  // Testar Host Ollama
+  const handleTestOllamaHost = async (host: string): Promise<any> => {
+    try {
+      const res = await fetch('/api/ollama/test-host', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host }),
+      });
+      const data = await res.json();
+      return {
+        host,
+        status: data.online ? 'connected' : 'offline',
+        version: data.version,
+        latency_ms: data.latency_ms,
+        error: data.error,
+      };
+    } catch (e: any) {
+      return {
+        host,
+        status: 'offline',
+        error: e?.message || 'Timeout ou inacessível',
+      };
+    }
+  };
+
+  // Sincronizar Todos os Dispositivos do Cluster em Tempo Real
+  const handleSyncAllDevices = async () => {
+    try {
+      const res = await fetch('/api/nodes/sync-all', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.nodes) {
+        setNodes(data.nodes);
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setLastSyncTime(timeStr);
+        addToast(data.message || 'Todos os nós sincronizados com sucesso!', 'success');
+      }
+    } catch (e: any) {
+      addToast(`Erro ao sincronizar dispositivos: ${e?.message || 'Falha de rede'}`, 'error');
+    }
+  };
+
+  // Testar Latência (Ping) de Cada Nó
+  const handlePingAllNodes = async () => {
+    try {
+      const res = await fetch('/api/nodes/ping-all', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.results) {
+        setNodes((prev) =>
+          prev.map((node) => {
+            const result = data.results.find((r: any) => r.node_id === node.node_id);
+            return result ? { ...node, latency_ms: result.latency_ms } : node;
+          })
+        );
+        addToast(`Ping concluído! Latência média: ${data.avg_latency_ms}ms`, 'info');
+      }
+    } catch (e: any) {
+      addToast(`Erro ao medir ping dos nós: ${e?.message || 'Inacessível'}`, 'warning');
+    }
+  };
+
+  // Distribuir Partição de Camadas (Shards) nos Dispositivos
+  const handlePushShards = async (model = selectedModelName, totalLayers = 32) => {
+    try {
+      const res = await fetch('/api/nodes/push-shards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, total_layers: totalLayers }),
+      });
+      const data = await res.json();
+      if (data.success && data.distribution) {
+        setNodes((prev) =>
+          prev.map((node) => {
+            const dist = data.distribution.find((d: any) => d.node_id === node.node_id);
+            return dist ? { ...node, assigned_layers: dist.assigned_layers } : node;
+          })
+        );
+        addToast(data.message || `Camadas distribuídas com sucesso para o modelo ${model}!`, 'success');
+      }
+    } catch (e: any) {
+      addToast(`Erro ao particionar camadas: ${e?.message || 'Falha de rede'}`, 'error');
+    }
+  };
+
+  // Auto-Sincronização Contínua a cada 10 segundos
+  useEffect(() => {
+    if (!autoSyncActive) return;
+    const interval = setInterval(() => {
+      fetch('/api/nodes/sync-all', { method: 'POST' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.nodes) {
+            setNodes(data.nodes);
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            setLastSyncTime(timeStr);
+          }
+        })
+        .catch(() => {});
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [autoSyncActive]);
+
+  // =========================================================================
+  // AUTO-SCALING, WAKE-ON-LAN & CLOUD BURSTING SOB DEMANDA
+  // =========================================================================
+
+  const handleTriggerWOL = async (dormantNode: DormantNodeWOL): Promise<boolean> => {
+    addToast(`Transmitindo Pacote Mágico WOL para ${dormantNode.mac_address} (${dormantNode.name})...`, 'info');
+    try {
+      const res = await fetch('/api/cluster/wol/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_id: dormantNode.id,
+          mac_address: dormantNode.mac_address,
+          ip_address: dormantNode.ip_address,
+          name: dormantNode.name,
+          platform: dormantNode.platform,
+          specs_summary: dormantNode.specs_summary,
+          wake_port: dormantNode.wake_port || 9,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.booted_node) {
+        setNodes((prev) => {
+          const filtered = prev.filter((n) => n.node_id !== dormantNode.id);
+          return [data.booted_node, ...filtered];
+        });
+        addToast(data.message || `Nó ${dormantNode.name} despertado e integrado com sucesso!`, 'success');
+        return true;
+      }
+      return false;
+    } catch (e: any) {
+      addToast(`Erro ao disparar WOL: ${e?.message || 'Falha de rede'}`, 'error');
+      return false;
+    }
+  };
+
+  const handleSpawnCloudNode = async (config: CloudBurstInstanceConfig): Promise<boolean> => {
+    addToast(`Provisionando nó em nuvem (${config.name})...`, 'info');
+    try {
+      const res = await fetch('/api/cluster/cloud-burst/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: config.provider,
+          name: config.name,
+          gpu_type: config.gpu_type,
+          cost_per_hour_usd: config.cost_per_hour_usd,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.node) {
+        setNodes((prev) => [data.node, ...prev]);
+        addToast(data.message || `Instância em nuvem ${config.name} acoplada com sucesso!`, 'success');
+        return true;
+      }
+      return false;
+    } catch (e: any) {
+      addToast(`Erro ao provisionar nuvem: ${e?.message || 'Falha'}`, 'error');
+      return false;
+    }
+  };
+
+  const handleTerminateCloudNode = async (nodeId: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/cluster/cloud-burst/terminate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: nodeId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNodes((prev) => prev.filter((n) => n.node_id !== nodeId));
+        addToast(data.message || `Instância encerrada com sucesso!`, 'info');
+        return true;
+      }
+      return false;
+    } catch (e: any) {
+      addToast(`Erro ao encerrar instância: ${e?.message || 'Falha'}`, 'error');
+      return false;
+    }
+  };
+
+  // =========================================================================
+  // mDNS OLLAMA DISCOVERY & BACKGROUND POLLING
+  // =========================================================================
+
+  const handleToggleMdnsDiscovery = () => {
+    setMdnsOllamaDiscovery((prev) => {
+      const next = !prev;
+      localStorage.setItem('llm_mdns_ollama_discovery', String(next));
+      addToast(
+        next
+          ? 'mDNS Ollama Discovery ATIVADO: varrendo sub-rede local a cada 15s.'
+          : 'mDNS Ollama Discovery DESATIVADO.',
+        next ? 'success' : 'info'
+      );
+      return next;
+    });
+  };
+
+  // Background Polling para mDNS Ollama Discovery (a cada 15s)
+  useEffect(() => {
+    if (!mdnsOllamaDiscovery) return;
+
+    const discoverOllamaInstances = async () => {
+      try {
+        const res = await fetch('/api/ollama/mdns-discover', { method: 'POST' });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.instances) && data.instances.length > 0) {
+          data.instances.forEach((inst: any) => {
+            if (inst.models && inst.models.length > 0) {
+              setModels((prevModels) => {
+                const existing = new Set(prevModels.map((m) => m.name.toLowerCase()));
+                const toAdd: ModelItem[] = [];
+                inst.models.forEach((im: any) => {
+                  if (!existing.has(im.name.toLowerCase())) {
+                    toAdd.push(im);
+                  }
+                });
+                if (toAdd.length > 0) {
+                  addToast(`[mDNS Discovery] ${toAdd.length} novo(s) modelo(s) detectado(s) em ${inst.host}!`, 'success');
+                  return [...toAdd, ...prevModels];
+                }
+                return prevModels;
+              });
+            }
+          });
+        }
+      } catch {}
+    };
+
+    const timer = setTimeout(discoverOllamaInstances, 2500);
+    const interval = setInterval(discoverOllamaInstances, 15000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [mdnsOllamaDiscovery, addToast]);
+
   // Download de Modelo
   const handleDownloadModel = (modelId: string) => {
     const targetModel = models.find((m) => m.id === modelId);
@@ -753,6 +1123,13 @@ export default function App() {
     addToast(`Modelo ${modelName} selecionado para inferência!`, 'success');
   };
 
+  // Selecionar modelo para Fine-Tuning
+  const handleSelectForFinetune = (modelName: string) => {
+    setSelectedModelName(modelName);
+    setCurrentView('finetune');
+    addToast(`Modelo base ${modelName} selecionado para Fine-Tuning!`, 'info');
+  };
+
   // Reset do Cluster
   const handleResetCluster = () => {
     setNodes(INITIAL_NODES);
@@ -793,6 +1170,10 @@ export default function App() {
           onlineCount={summary.online_nodes}
           totalCount={summary.total_nodes}
           criticalCount={criticalNodesCount}
+          models={models}
+          selectedModelName={selectedModelName}
+          onSelectModel={setSelectedModelName}
+          onNavigateToModels={() => setCurrentView('models')}
           theme={theme}
           onThemeChange={setTheme}
           powerSaveMode={powerSaveMode}
@@ -830,6 +1211,17 @@ export default function App() {
               onBenchmarkNode={handleBenchmarkNode}
               onEmergencyIntervene={handleEmergencyIntervene}
               onSimulateCriticalNode={handleSimulateCriticalNode}
+              onSyncAllDevices={handleSyncAllDevices}
+              onPingAllNodes={handlePingAllNodes}
+              onPushShards={handlePushShards}
+              onTriggerWOL={handleTriggerWOL}
+              onSpawnCloudNode={handleSpawnCloudNode}
+              onTerminateCloudNode={handleTerminateCloudNode}
+              autoScaleEnabled={autoScaleEnabled}
+              onToggleAutoScale={setAutoScaleEnabled}
+              autoSyncActive={autoSyncActive}
+              onToggleAutoSync={() => setAutoSyncActive(!autoSyncActive)}
+              lastSyncTime={lastSyncTime}
               isScanning={isScanning}
             />
           )}
@@ -841,6 +1233,7 @@ export default function App() {
               selectedModelName={selectedModelName}
               onSelectModel={setSelectedModelName}
               onRunInference={handleRunInference}
+              onNavigateToModels={() => setCurrentView('models')}
             />
           )}
 
@@ -855,8 +1248,14 @@ export default function App() {
           {currentView === 'models' && (
             <ModelsView
               models={models}
+              nodes={nodes}
+              activeModelName={selectedModelName}
               onDownloadModel={handleDownloadModel}
               onUseModel={handleUseModel}
+              onSelectForFinetune={handleSelectForFinetune}
+              onPullOllamaModel={handlePullOllamaModel}
+              onSyncOllama={handleSyncOllama}
+              onTestOllamaHost={handleTestOllamaHost}
             />
           )}
 
@@ -882,6 +1281,8 @@ export default function App() {
               onThemeChange={setTheme}
               powerSaveMode={powerSaveMode}
               onTogglePowerSave={handleTogglePowerSave}
+              mdnsOllamaDiscovery={mdnsOllamaDiscovery}
+              onToggleMdnsDiscovery={handleToggleMdnsDiscovery}
               onResetCluster={handleResetCluster}
             />
           )}
@@ -895,6 +1296,15 @@ export default function App() {
         pairingInfo={pairingInfo}
         onRegenerateCode={handleRegenerateCode}
         onSimulateConnect={handleSimulateConnect}
+      />
+
+      {/* Mini-Chat Flutuante do Cluster */}
+      <MiniChatWidget
+        nodes={nodes}
+        models={models}
+        selectedModelName={selectedModelName}
+        onSelectModel={setSelectedModelName}
+        onRunInference={handleRunInference}
       />
 
       {/* Container de Toasts Flutuantes */}

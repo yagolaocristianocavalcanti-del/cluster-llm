@@ -1,6 +1,6 @@
 {
   "name": "LLM Cluster Trainer V3",
-  "description": "Painel de controle unificado para treinamento distribuído e inferência de LLMs em múltiplos dispositivos com Dynamic Load Balancer, Quantização On-The-Fly, Micro-Benchmark 30s e Checkpoints Auto-Resume.",
+  "description": "Painel unificado para treinamento e inferência de LLMs distribuídos com Ollama mDNS discovery, Auto-Scaling com Wake-on-LAN (WOL), Cloud Bursting sob demanda e Heatmap de Saúde Térmica/RAM.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
