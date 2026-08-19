@@ -23,6 +23,7 @@ export interface ClusterNode {
   latency_ms: number;
   backend_type: 'ollama' | 'llama.cpp' | 'vllm' | 'native_cpu';
   assigned_shards?: number[];
+  assigned_layers?: string;
   current_task_id?: string;
   is_master?: boolean;
 }

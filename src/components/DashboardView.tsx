@@ -261,54 +261,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
-          <div className="space-y-2.5">
-            {recentTasks.map((task) => (
-              <div
-                key={task.task_id}
-                className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-all"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs text-white capitalize">
-                      {task.task_type.replace('_', ' ')}
-                    </span>
-                    <span className="text-[10px] font-mono text-white/40">#{task.task_id}</span>
-                  </div>
-                  <p className="text-[11px] text-white/50 truncate mt-0.5">
-                    {task.params.model || task.params.model_name || task.params.dataset_name || 'Execução distribuída'}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <div className="text-right">
-                    <span className="text-[11px] font-mono text-white/50 block">{task.progress}%</span>
-                    <div className="w-16 bg-white/10 rounded-full h-1 mt-0.5 overflow-hidden">
-                      <div
-                        className="bg-indigo-400 h-full rounded-full"
-                        style={{ width: `${task.progress}%` }}
-                      />
+          {recentTasks.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
+              <Clock className="w-8 h-8 text-white/30 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-white/70">Nenhuma tarefa em execução</p>
+              <p className="text-xs text-white/40 mt-1">Inicie uma inferência ou treinamento LoRA para ver o histórico em tempo real.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {recentTasks.map((task) => (
+                <div
+                  key={task.task_id}
+                  className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-all"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-white capitalize">
+                        {task.task_type.replace('_', ' ')}
+                      </span>
+                      <span className="text-[10px] font-mono text-white/40">#{task.task_id}</span>
                     </div>
+                    <p className="text-[11px] text-white/50 truncate mt-0.5">
+                      {task.params.model || task.params.model_name || task.params.dataset_name || 'Execução distribuída'}
+                    </p>
                   </div>
 
-                  {task.status === 'completed' && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                      Concluído
-                    </span>
-                  )}
-                  {task.status === 'running' && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30 animate-pulse">
-                      Em Execução
-                    </span>
-                  )}
-                  {task.status === 'pending' && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
-                      Pendente
-                    </span>
-                  )}
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-right">
+                      <span className="text-[11px] font-mono text-white/50 block">{task.progress}%</span>
+                      <div className="w-16 bg-white/10 rounded-full h-1 mt-0.5 overflow-hidden">
+                        <div
+                          className="bg-indigo-400 h-full rounded-full"
+                          style={{ width: `${task.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {task.status === 'completed' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                        Concluído
+                      </span>
+                    )}
+                    {task.status === 'running' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30 animate-pulse">
+                        Em Execução
+                      </span>
+                    )}
+                    {task.status === 'pending' && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
