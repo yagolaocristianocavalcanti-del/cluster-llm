@@ -17,12 +17,14 @@ interface TopbarProps {
   currentView: AppView;
   onlineCount: number;
   totalCount: number;
+  criticalCount?: number;
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
   powerSaveMode: boolean;
   onTogglePowerSave: () => void;
   onOpenPairing: () => void;
   onRefresh: () => void;
+  onNavigateToCluster?: () => void;
   isRefreshing: boolean;
 }
 
@@ -69,12 +71,14 @@ export const Topbar: React.FC<TopbarProps> = ({
   currentView,
   onlineCount,
   totalCount,
+  criticalCount = 0,
   theme,
   onThemeChange,
   powerSaveMode,
   onTogglePowerSave,
   onOpenPairing,
   onRefresh,
+  onNavigateToCluster,
   isRefreshing,
 }) => {
   const currentInfo = VIEW_TITLES[currentView] || {
@@ -99,6 +103,21 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Actions & Status */}
       <div className="flex items-center gap-3">
+        {/* Alerta de Nós Críticos */}
+        {criticalCount > 0 && (
+          <button
+            onClick={onNavigateToCluster}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/25 border border-rose-500/60 text-rose-200 hover:bg-rose-500 hover:text-white text-xs font-bold shadow-lg shadow-rose-900/40 animate-pulse transition-all"
+            title={`${criticalCount} nó(s) com temperatura >85°C ou VRAM >90%. Clique para abrir o cluster.`}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+            </span>
+            <span>{criticalCount} {criticalCount === 1 ? 'Nó Crítico' : 'Nós Críticos'}</span>
+          </button>
+        )}
+
         {/* Status do Motor */}
         <div className="hidden sm:flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-xs">
           <span className="relative flex h-2.5 w-2.5">

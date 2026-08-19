@@ -308,47 +308,46 @@ export const SAMPLE_DATASETS = [
 export const SCRIPT_TEMPLATES = {
   termux: `# ============================================================
 # LLM Cluster Trainer V3 - Script Automático para Termux (Android)
+# Aceleração OpenCL + QLoRA Sharding + Socket.IO Daemon
 # ============================================================
 pkg update -y && pkg upgrade -y
 pkg install -y python git clang cmake make opencl-headers libandroid-support
 python -m pip install --upgrade pip
 pip install python-socketio psutil requests
 
-# Baixar e iniciar worker
-curl -sSL https://raw.githubusercontent.com/llm-cluster/v3/main/worker.py -o worker.py
+# Baixar e iniciar worker com suporte a Sharding & QLoRA
+curl -sSL http://{{MASTER_IP}}:3000/api/worker.py -o worker.py
 python worker.py --master-ip {{MASTER_IP}} --code {{PAIRING_CODE}}
 `,
   windows: `# ============================================================
-# LLM Cluster Trainer V3 - Script PowerShell (Windows)
+# LLM Cluster Trainer V3 - Script PowerShell (Windows 10/11)
+# Suporte a CUDA, bitsandbytes (Paged AdamW) e QLoRA NF4
 # ============================================================
-Write-Host "Iniciando Servo LLM Cluster V3..." -ForegroundColor Cyan
+Write-Host "Iniciando Servo LLM Cluster V3 (QLoRA & Pipeline Worker)..." -ForegroundColor Cyan
 
 if (!(Get-Command "python" -ErrorAction SilentlyContinue)) {
-    Write-Host "Instalando Python via Winget..." -ForegroundColor Yellow
+    Write-Host "Instalando Python 3.11 via Winget..." -ForegroundColor Yellow
     winget install Python.Python.3.11 --silent
 }
 
 pip install --upgrade pip
-pip install python-socketio psutil requests flask-socketio
+pip install python-socketio psutil requests torch bitsandbytes peft transformers
 
-# Conexao automatica ao Master
-python -c "
-import socketio, time, psutil
-sio = socketio.Client()
-sio.connect('http://{{MASTER_IP}}:5000')
-sio.emit('pair_request', {'code': '{{PAIRING_CODE}}'})
-sio.wait()
-"
+# Baixar e conectar daemon do Worker
+Invoke-WebRequest -Uri "http://{{MASTER_IP}}:3000/api/worker.py" -OutFile "worker.py"
+python worker.py
 `,
   linux: `# ============================================================
-# LLM Cluster Trainer V3 - Script Bash (Linux / Ubuntu / Debian)
+# LLM Cluster Trainer V3 - Script Bash (Linux / Ubuntu / Debian / RPi)
+# Pipeline Parallelism + Paged AdamW 8-bit + Gradient Checkpointing
 # ============================================================
 sudo apt update && sudo apt install -y python3 python3-pip python3-venv git curl
-pip3 install python-socketio psutil requests flask-socketio
+pip3 install --upgrade pip
+pip3 install python-socketio psutil requests torch bitsandbytes peft transformers
 
 # Executar Servo em background
-curl -sSL https://raw.githubusercontent.com/llm-cluster/v3/main/worker.py -o worker.py
-python3 worker.py --master-ip {{MASTER_IP}} --code {{PAIRING_CODE}} &
-echo "Servo iniciado na porta 5001! Mini-dashboard: http://localhost:5001"
+curl -sSL http://{{MASTER_IP}}:3000/api/worker.py -o worker.py
+python3 worker.py &
+echo "Servo QLoRA iniciado com sucesso! Mini-dashboard: http://localhost:5001"
 `,
 };

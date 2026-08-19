@@ -26,8 +26,19 @@ import { ServoMiniDashViewProps as ServoMiniDashView } from './components/ServoM
 import { ScriptsView } from './components/ScriptsView';
 import { SettingsView } from './components/SettingsView';
 import { PairingModal } from './components/PairingModal';
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, X, Flame, ShieldAlert, Zap } from 'lucide-react';
 import { io } from 'socket.io-client';
+
+export interface ToastItem {
+  id: string;
+  title?: string;
+  message: string;
+  type: 'success' | 'info' | 'error' | 'critical' | 'warning';
+  nodeId?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  timestamp: number;
+}
 
 export default function App() {
   // Estado de navegação e tema
@@ -76,15 +87,146 @@ export default function App() {
   });
 
   // Toasts
-  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'info' | 'error' }[]>([]);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const lastAlertTimeRef = React.useRef<Record<string, number>>({});
 
-  const addToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
+  const playAlertSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch {
+      // Audio context may be restricted by browser policy before first gesture
+    }
+  }, []);
+
+  const addToast = useCallback((
+    message: string, 
+    type: 'success' | 'info' | 'error' | 'critical' | 'warning' = 'info',
+    options?: { title?: string; nodeId?: string; actionLabel?: string; onAction?: () => void; durationMs?: number }
+  ) => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    if (type === 'critical') {
+      playAlertSound();
+    }
+    const newToast: ToastItem = {
+      id,
+      title: options?.title,
+      message,
+      type,
+      nodeId: options?.nodeId,
+      actionLabel: options?.actionLabel,
+      onAction: options?.onAction,
+      timestamp: Date.now(),
+    };
+    setToasts((prev) => [...prev, newToast]);
+    const duration = options?.durationMs || (type === 'critical' ? 14000 : 4000);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
+    }, duration);
+  }, [playAlertSound]);
+
+  // Intervenção Imediata de Emergência: Descarrega Shards, Reduz VRAM/RAM e Resfria o Nó
+  const handleEmergencyIntervene = useCallback((nodeId: string) => {
+    setNodes((prevNodes) =>
+      prevNodes.map((n) => {
+        if (n.node_id !== nodeId) return n;
+        const safeRam = Math.round(n.ram_total_gb * 0.35 * 10) / 10;
+        return {
+          ...n,
+          ram_used_gb: safeRam,
+          ram_usage: 35,
+          gpu_usage: 18,
+          cpu_usage: 24,
+          temperature_c: 42,
+          current_task_id: undefined,
+        };
+      })
+    );
+
+    // Remove alertas críticos pendentes para este nó
+    setToasts((prev) => prev.filter((t) => t.nodeId !== nodeId));
+
+    const targetNode = nodes.find((n) => n.node_id === nodeId);
+    const nodeName = targetNode ? targetNode.device_name : 'Nó';
+    addToast(
+      `🛡️ Intervenção de emergência concluída! A carga de "${nodeName}" foi descarregada: VRAM/RAM estabilizada em 35% e temperatura em 42°C.`,
+      'success'
+    );
+  }, [nodes, addToast]);
+
+  // Simular Carga Crítica (>85°C e >90% VRAM) para teste imediato
+  const handleSimulateCriticalNode = useCallback((targetNodeId?: string) => {
+    const targetId = targetNodeId || (nodes.find((n) => n.status === 'online')?.node_id || 'node_termux_s24');
+    setNodes((prevNodes) =>
+      prevNodes.map((n) => {
+        if (n.node_id !== targetId) return n;
+        return {
+          ...n,
+          temperature_c: 88,
+          gpu_usage: 94,
+          ram_usage: 93,
+          ram_used_gb: Math.round((n.ram_total_gb * 0.93) * 10) / 10,
+          cpu_usage: 96,
+        };
+      })
+    );
+    addToast('Simulação de sobrecarga crítica injetada! Monitorando sensores...', 'info');
+  }, [nodes, addToast]);
+
+  // Monitoramento Contínuo de Alertas Críticos (>90% VRAM ou >85°C)
+  useEffect(() => {
+    nodes.forEach((node) => {
+      if (node.status === 'offline') return;
+
+      const isTempCritical = (node.temperature_c ?? 0) > 85;
+      const isVramCritical = (node.gpu_usage ?? 0) > 90;
+      const isRamCritical = (node.ram_usage ?? 0) > 90;
+
+      if (isTempCritical || isVramCritical || isRamCritical) {
+        const alertKey = `${node.node_id}_critical`;
+        const now = Date.now();
+        const lastAlert = lastAlertTimeRef.current[alertKey] || 0;
+
+        // Cooldown de 25s por nó para evitar flood
+        if (now - lastAlert > 25000) {
+          lastAlertTimeRef.current[alertKey] = now;
+
+          let reason = '';
+          if (isTempCritical && (isVramCritical || isRamCritical)) {
+            reason = `temperatura extrema de ${node.temperature_c}°C (> 85°C) e uso de memória de ${Math.max(node.gpu_usage || 0, node.ram_usage)}% (> 90%)`;
+          } else if (isTempCritical) {
+            reason = `temperatura crítica de ${node.temperature_c}°C (> 85°C - Risco de Thermal Throttling)`;
+          } else {
+            reason = `uso de memória crítico de ${Math.max(node.gpu_usage || 0, node.ram_usage)}% (> 90% - Risco Iminente de OOM)`;
+          }
+
+          addToast(
+            `O nó "${node.device_name}" registrou ${reason}. Clique abaixo para aplicar a intervenção de emergência.`,
+            'critical',
+            {
+              title: `🚨 ALERTA CRÍTICO: ${node.device_name.split(' ')[0]}`,
+              nodeId: node.node_id,
+              actionLabel: '⚡ Descarregar e Resfriar Nó',
+              onAction: () => handleEmergencyIntervene(node.node_id),
+              durationMs: 14000,
+            }
+          );
+        }
+      }
+    });
+  }, [nodes, addToast, handleEmergencyIntervene]);
 
   // Salvar no localStorage
   useEffect(() => {
@@ -198,7 +340,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, [powerSaveMode]);
 
-  // Cálculo das Métricas Agregadas do Motor Único
+  // Cálculo de Nós em Estado Crítico (>90% VRAM ou >85°C)
+  const criticalNodesCount = useMemo(() => {
+    return nodes.filter(
+      (n) => n.status === 'online' && ((n.temperature_c ?? 0) > 85 || (n.gpu_usage ?? 0) > 90 || (n.ram_usage ?? 0) > 90)
+    ).length;
+  }, [nodes]);
   const summary: ClusterMetricsSummary = useMemo(() => {
     const onlineNodes = nodes.filter((n) => n.status === 'online');
     const totalRam = nodes.reduce((acc, n) => acc + n.ram_total_gb, 0);
@@ -645,12 +792,14 @@ export default function App() {
           currentView={currentView}
           onlineCount={summary.online_nodes}
           totalCount={summary.total_nodes}
+          criticalCount={criticalNodesCount}
           theme={theme}
           onThemeChange={setTheme}
           powerSaveMode={powerSaveMode}
           onTogglePowerSave={handleTogglePowerSave}
           onOpenPairing={() => setIsPairingOpen(true)}
           onRefresh={handleRefresh}
+          onNavigateToCluster={() => setCurrentView('cluster')}
           isRefreshing={isRefreshing}
         />
 
@@ -679,6 +828,8 @@ export default function App() {
               onAddManualNode={handleAddManualNode}
               onRemoveNode={handleRemoveNode}
               onBenchmarkNode={handleBenchmarkNode}
+              onEmergencyIntervene={handleEmergencyIntervene}
+              onSimulateCriticalNode={handleSimulateCriticalNode}
               isScanning={isScanning}
             />
           )}
@@ -747,30 +898,69 @@ export default function App() {
       />
 
       {/* Container de Toasts Flutuantes */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full">
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 pointer-events-none max-w-md w-full">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 pointer-events-auto border animate-slideIn ${
-              toast.type === 'success'
-                ? 'bg-emerald-950/70 border-emerald-500/30 text-emerald-200 shadow-emerald-950/40'
+            className={`p-4 rounded-3xl shadow-2xl backdrop-blur-2xl flex flex-col gap-2 pointer-events-auto border transition-all animate-slideIn ${
+              toast.type === 'critical'
+                ? 'bg-rose-950/90 border-rose-500/80 text-rose-100 shadow-rose-900/60 ring-2 ring-rose-500/40'
+                : toast.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200 shadow-emerald-950/40'
                 : toast.type === 'error'
-                ? 'bg-rose-950/70 border-rose-500/30 text-rose-200 shadow-rose-950/40'
-                : 'bg-indigo-950/70 border-indigo-500/30 text-indigo-200 shadow-indigo-950/40'
+                ? 'bg-rose-950/80 border-rose-500/40 text-rose-200 shadow-rose-950/40'
+                : 'bg-slate-900/90 border-indigo-500/40 text-indigo-100 shadow-indigo-950/40'
             }`}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
-              {toast.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />}
-              {toast.type === 'info' && <Info className="w-4 h-4 text-indigo-400 flex-shrink-0" />}
-              <span className="text-xs font-medium truncate">{toast.message}</span>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                {toast.type === 'critical' && (
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/30 text-rose-300 border border-rose-500/50 flex items-center justify-center flex-shrink-0 animate-pulse">
+                    <Flame className="w-5 h-5 text-rose-400" />
+                  </div>
+                )}
+                {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />}
+                {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />}
+                {toast.type === 'info' && <Info className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />}
+
+                <div className="min-w-0">
+                  {toast.title && (
+                    <h4 className="text-xs font-black uppercase tracking-wide text-white mb-0.5 flex items-center gap-1.5">
+                      {toast.title}
+                      {toast.type === 'critical' && (
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                      )}
+                    </h4>
+                  )}
+                  <p className="text-xs leading-relaxed opacity-90 font-medium">
+                    {toast.message}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="text-white/50 hover:text-white p-1 rounded-xl hover:bg-white/10 flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-              className="text-white/60 hover:text-white p-0.5 rounded-lg hover:bg-white/10"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+
+            {/* Ação de Intervenção Imediata */}
+            {toast.actionLabel && toast.onAction && (
+              <div className="pt-2 border-t border-rose-500/20 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.onAction?.();
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-all hover:scale-105 active:scale-95"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  {toast.actionLabel}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

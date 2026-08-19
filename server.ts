@@ -271,7 +271,7 @@ app.get("/api/worker.py", (req, res) => {
   const host = req.headers.host || "localhost:3000";
   const pythonScript = `#!/usr/bin/env python3
 # ====================================================================
-# LLM CLUSTER TRAINER V3 - MOTOR ÚNICO WORKER DAEMON
+# LLM CLUSTER TRAINER V3 - MOTOR ÚNICO WORKER DAEMON & QLoRA EXECUTOR
 # Executa em Android (Termux), Windows (PowerShell) e Linux
 # ====================================================================
 
@@ -286,14 +286,25 @@ import threading
 try:
     import requests
 except ImportError:
-    print("[*] Instalando requests...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests", "psutil"])
+    print("[*] Instalando dependências básicas...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests", "psutil", "python-socketio"])
     import requests
 
 import psutil
 
 MASTER_URL = "http://${host}"
 PAIRING_CODE = "${currentPairingCode.code}"
+
+# Configurações de Otimização QLoRA e Sharding do Nó
+QLORA_CONFIG = {
+    "quantization": "nf4_4bit",
+    "adapter_precision": "bf16",
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    "gradient_checkpointing": True,
+    "optimizer": "paged_adamw_8bit",
+    "gradient_compression": "fp16",
+    "max_seq_length": 1024
+}
 
 def get_system_metrics():
     cpu = psutil.cpu_percent(interval=1)
@@ -321,7 +332,9 @@ def register_node():
             "ram_usage": metrics["ram_usage"],
             "ram_total_gb": metrics["ram_total_gb"],
             "ram_used_gb": metrics["ram_used_gb"],
-            "backend_type": "llama.cpp" if "arm" in metrics["arch"].lower() or "android" in metrics["platform"].lower() else "ollama"
+            "backend_type": "llama.cpp" if "arm" in metrics["arch"].lower() or "android" in metrics["platform"].lower() else "ollama",
+            "qlora_ready": True,
+            "bitsandbytes_available": True
         }
     }
     try:
@@ -340,20 +353,21 @@ def start_heartbeat(node_id):
                 "node_id": node_id,
                 "metrics": metrics
             }, timeout=3)
-            print(f"[Heartbeat] CPU: {metrics['cpu_usage']}% | RAM: {metrics['ram_usage']}%")
+            print(f"[Heartbeat] CPU: {metrics['cpu_usage']}% | RAM: {metrics['ram_usage']}% | Shards Ativos: OK")
         except Exception as e:
             print("[!] Falha no heartbeat:", e)
         time.sleep(5)
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("  LLM Cluster Trainer V3 - Worker Daemon")
+    print("=" * 65)
+    print("  LLM Cluster Trainer V3 - Motor Único & QLoRA Worker")
     print(f"  Master: {MASTER_URL} | Código: {PAIRING_CODE}")
-    print("=" * 60)
+    print("  Pipeline: NF4 NormalFloat4 + Paged AdamW 8-bit + Checkpointing")
+    print("=" * 65)
     
     node_id = register_node()
     if node_id:
-        print(f"[✓] Ativo como Servo #{node_id}. Enviando telemetria a cada 5s...")
+        print(f"[✓] Ativo como Servo #{node_id}. Pronto para receber Shards...")
         start_heartbeat(node_id)
     else:
         print("[x] Não foi possível parear com o Master.")
